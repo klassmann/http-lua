@@ -1,9 +1,10 @@
-/* Small Web Server
+/* http-lua
  * Author: Lucas Klassmann
- * License: Apache
- * A small webserver written in C and with Lua embedded for application development. It works with epoll() for async.
+ * License: Apache 2.0
+ * A small webserver written in C and embedded Lua for application development. It works with epoll() for async.
  */
 #define _GNU_SOURCE
+
 #include <lua.h>
 #include <lualib.h>
 #include <lauxlib.h>
@@ -18,12 +19,13 @@
 #include <sys/fcntl.h>
 #include <arpa/inet.h>
 
-#define HTTP_PORT 8000              // Port to listen
-#define MAX_CONNECTIONS 2048        // Number of connections supported
-
+#define HTTP_PORT 8000                  // Port to listen
+#define MAX_CONNECTIONS 2048            // Number of connections supported
+#define SCRIPT_FILENAME "app/app.lua"
+#define SCRIPT_ENTRYPOINT "index"       // script entry point
 
 ///////////////////////////// MEMORY HELPERS /////////////////////////////////
-static int memory_alloc_count = 0;
+static int memory_alloc_count = 0;      // Help to track memory when debugging
 static size_t memory_alloc_size = 0;
 
 void *mem_alloc(size_t size) {
@@ -72,24 +74,27 @@ do {                                                \
 #define HEADER_EXTRA_SIZE 128
 #define HEADER_COUNT 512
 #define REQUEST_HEADER_SIZE 4096
+#define HEADER_KEY_SIZE 1024
+#define HEADER_VALUE_SIZE 1024
+#define HTTP_PATH_SIZE 1024
 #define MIMETYPE_HTML "text/html"
 
 const char *http_response_fmt =
         "HTTP/1.1 %d %s\n"
         "Content-Type: %s; charset=utf-8\n"
         "Date: Sun, 29 Jan 2023 06:26:25 GMT\n"
-        "Content-Length: %d\n\n"
+        "Content-Length: %d\n\n"                // Two line breaks to separate the response header and body
         "%s";
 
 typedef struct KeyValue {
-    char key[1024];
-    char value[1024];
+    char key[HEADER_KEY_SIZE];
+    char value[HEADER_VALUE_SIZE];
 } KeyValue;
 
 KeyValue *keyvalue_new(const char *s) {
-    KeyValue* kv = mem_alloc(sizeof(KeyValue));
-    char key[2048];
-    char value[2048];
+    KeyValue *kv = mem_alloc(sizeof(KeyValue));
+    char key[HEADER_KEY_SIZE];
+    char value[HEADER_VALUE_SIZE];
 
     memset(&key, 0, sizeof(key));
     memset(&value, 0, sizeof(value));
@@ -134,9 +139,9 @@ void keyvalue_free(KeyValue *kv) {
 
 typedef struct Request {
     char method[8];
-    char path[1024];
+    char path[HTTP_PATH_SIZE];
     uint32_t header_count;
-    KeyValue* headers[HEADER_COUNT];
+    KeyValue *headers[HEADER_COUNT];
     size_t size;
 } Request;
 
@@ -148,7 +153,7 @@ void request_add_header(Request *req, KeyValue *kv) {
 // Read the incoming data and parse them into method, path and headers fields.
 Request *request_new(char *http_request) {
     char request_method[8];
-    char path[1024];
+    char path[HTTP_PATH_SIZE];
     char protocol[16];
     sscanf(http_request, "%s %s %s", request_method, path, protocol);
     Request *r = mem_alloc(sizeof(Request));
@@ -168,7 +173,7 @@ Request *request_new(char *http_request) {
 }
 
 void request_free(Request *r) {
-    for(int j = 0; j < r->header_count; j++) {
+    for (int j = 0; j < r->header_count; j++) {
         KeyValue *p = r->headers[j];
         if (p != NULL) {
             keyvalue_free(p);
@@ -207,7 +212,8 @@ Response *response_html_new(uint32_t status, const char *body, size_t body_size)
     resp->mimetype = MIMETYPE_HTML;
     resp->status = status;
     resp->reason = http_reason(status);
-    resp->size = sprintf(resp->content, http_response_fmt, status, http_reason(status), resp->mimetype, body_size, body);
+    resp->size = sprintf(resp->content, http_response_fmt, status, http_reason(status), resp->mimetype, body_size,
+                         body);
     return resp;
 }
 
@@ -239,10 +245,11 @@ void request_to_lua_arg(lua_State *L, Request *r) {
     }
     lua_setfield(L, 2, "headers");
 }
+
 Response *response_from_lua(lua_State *L) {
     lua_Integer status = luaL_checkinteger(L, 1); // first returned value
     size_t body_sz;
-    const char * body = luaL_checklstring(L, 2, &body_sz); // second returned value
+    const char *body = luaL_checklstring(L, 2, &body_sz); // second returned value
     return response_html_new(status, body, body_sz);
 }
 
@@ -292,19 +299,19 @@ void httpserver_free(HTTPServer *srv) {
 }
 
 int http_server_listen(HTTPServer *srv, int maxconnections) {
-   int err = bind(srv->socket_fd, (struct sockaddr *)&srv->server_addr, sizeof(srv->server_addr));
+    int err = bind(srv->socket_fd, (struct sockaddr *) &srv->server_addr, sizeof(srv->server_addr));
     if (err == -1) {
-        LOG_ERR("it wasn't possible to bind port %d", srv->server_addr.sin_port);
+        LOG_ERR("it wasn't possible to bind port %d", ntohs(srv->server_addr.sin_port));
         exit(1);
     }
-   return listen(srv->socket_fd, maxconnections);
+    return listen(srv->socket_fd, maxconnections);
 }
 
 Client *http_server_accept(HTTPServer *srv) {
     Client *c = mem_alloc(sizeof(Client));
 
     c->size = sizeof(struct sockaddr_in);
-    c->fd = accept(srv->socket_fd, (struct sockaddr *)&c->addr, (socklen_t*)&c->size);
+    c->fd = accept(srv->socket_fd, (struct sockaddr *) &c->addr, (socklen_t *) &c->size);
     if (c->fd == -1) {
         panic("accept");
     }
@@ -338,8 +345,8 @@ void client_worker(Client *client) {
     LOG_INFO("Request: %s %s", r->method, r->path);
 
     lua_State *L = lua_init();
-    if (luaL_dofile(L, "app.lua") == LUA_OK) {
-        lua_getglobal(L, "route");
+    if (luaL_dofile(L, SCRIPT_FILENAME) == LUA_OK) {
+        lua_getglobal(L, SCRIPT_ENTRYPOINT);
         request_to_lua_arg(L, r);
         if (lua_pcall(L, 1, LUA_MULTRET, 0) == LUA_OK) {
             Response *resp = response_from_lua(L);
@@ -358,7 +365,7 @@ void client_worker(Client *client) {
     lua_close(L);
 }
 
-int main(int argc, char ** argv) {
+int main(int argc, char **argv) {
     HTTPServer *server = NULL;
 
     // https://man7.org/linux/man-pages/man2/signalfd.2.html
@@ -368,6 +375,7 @@ int main(int argc, char ** argv) {
     ssize_t s;
     sigemptyset(&mask);
     sigaddset(&mask, SIGINT);
+    sigaddset(&mask, SIGKILL);
     sigaddset(&mask, SIGTERM);
     sigaddset(&mask, SIGQUIT);
     if (sigprocmask(SIG_BLOCK, &mask, NULL) == -1) {
@@ -437,11 +445,11 @@ int main(int argc, char ** argv) {
         }
     }
 
-quit_server:
+    quit_server:
     httpserver_free(server);
     LOG_INFO("%s", "gracefully terminating.");
     fflush(stderr);
     fflush(stdout);
-    exit(0);
-    return 0;
+
+    return EXIT_SUCCESS;
 }

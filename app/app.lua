@@ -1,9 +1,14 @@
 -- Application
 
+io = require("io")
+
 styles = [[
     body {
-        background-color: #EEFFEE;
-        color: #ffffff;
+        line-height: 1.1rem;
+        font-size: 1.2rem;
+        font-family: sans;
+        background-color: #222222;
+        color: white;
         text-shadow: 1px 1px #000000;
         display: flex;
         justify-content: center;
@@ -16,23 +21,19 @@ styles = [[
         width: 800px;
     }
 
-
-
     a {
-        color: #FFFFFF;
+        color: dodgerblue;
     }
 
     a:visited {
-        color: orange;
+        color: steelblue;
     }
-]]
 
-menu = [[
-    <ul>
-        <li><a href="/">Home</a></li>
-        <li><a href="/article">Articles</a></li>
-        <li><a href="/about">About</a></li>
-    </ul>
+    .navbar {
+        display: flex;
+        list-style: none;
+        justify-content: space-evenly;
+    }
 ]]
 
 base = [[
@@ -43,8 +44,11 @@ base = [[
 </head>
     <body>
         <div class="center">
-            <h1>Welcome from my <span style="color: blue">Lua</span> application</h1>
+            <div style="width: 300px;">
             %s
+            </div>
+            <h1>Welcome to my <span style="color: dodgerblue">Lua</span> application</h1>
+            <p><a target="_blank" href="http://www.lua.org/manual/5.3/">Lua 5.3 Reference Manual</a></p>
             <p>Method: <b>%s</b></p>
             <p>Path: <b>%s</b></p>
             <p>Host: %s</p>
@@ -54,8 +58,18 @@ base = [[
 </html>
 ]]
 
+function load_logo()
+    local f = io.open("app/static/http-lua.svg", "r")
+    if f ~= nil then
+        local content = f:read("a")
+        f:close()
+        return content
+    else
+        return ""
+    end
+end
 
-function route(request)
+function index(request)
 
     if request.path == '/styles.css' then
         return 200, styles
@@ -63,7 +77,7 @@ function route(request)
 
     return 200, string.format(
             base,
-            menu,
+            load_logo(),
             request.method,
             request.path,
             request.headers["Host"],

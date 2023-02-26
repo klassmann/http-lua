@@ -1,29 +1,51 @@
+![](static/http-lua.svg)
+
 # http-lua
-Single Lua Application HTTP Server in C with epoll support.
 
-This project was created to be used as a reference to some articles that I am writing on my blog.
+> HTTP Server in C for single Lua application with epoll support.
 
-I wrote a http server to show how Lua can be used to allow the user customize a real application.
+The project is intended to be a reference for articles that I am writing for my blog. It is a small **HTTP server** in
+**C** that uses **epoll**, **signalfd**, and **embedded Lua**. The idea is to be used as a standalone application
+server. It can be used for study purposes, to serve as a reference, and for fun.
 
-My articles that refers to this repository:
-    - 
+## Articles linked to this repository
+
+- [More Advanced Examples of Embedding Lua in C](https://lucasklassmann.com/blog/2023-02-26-more-advanced-examples-of-embedding-lua-in-c/)
 
 ## Features
-    - Support basic HTTP requests and responses
-    - Lua application written in the app.lua script
-    - event controlling with epoll() for signals and socket
-    - 2048 clients connected per second (I just tested with Apache Benchmark ab)
+
+- Support basic HTTP requests and responses
+- Application written in Lua. Change app.lua script.
+- Event control with epoll() for signals and socket
+- Tested with 2048 clients connected per second (tested with Apache Benchmark ab)
+
+## TODO
+
+- Remove the fixed date time in the HTTP responses
+- Improve memory management
+- Add arguments options to
+    - change port
+    - max connections
+    - script file
+    - script entrypoint
 
 ## Dependencies
-    - CMake
+
+    - CMake >= 2.8.11
     - Lua 5.3
     - epoll (libc)
 
 ## Building
-On Linux with CMake, by default it will use Makefile.
+
+On Linux with CMake, by default, it will use Makefile. Go inside the project's folder:
+
 ```bash
 mkdir build
 cd build
 cmake ..
 make
 ```
+
+## License
+
+[Apache 2.0](LICENSE)
