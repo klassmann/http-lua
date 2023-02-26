@@ -1,8 +1,10 @@
 /* http-lua
  * Author: Lucas Klassmann
  * License: Apache 2.0
- * A small webserver written in C and embedded Lua for application development. It works with epoll() for async.
+ * A small webserver written in C and embedded Lua for application development.
+ * It works with epoll() for async.
  */
+
 #define _GNU_SOURCE
 
 #include <lua.h>
@@ -83,7 +85,7 @@ const char *http_response_fmt =
         "HTTP/1.1 %d %s\n"
         "Content-Type: %s; charset=utf-8\n"
         "Date: Sun, 29 Jan 2023 06:26:25 GMT\n"
-        "Content-Length: %d\n\n"                // Two line breaks to separate the response header and body
+        "Content-Length: %d\n\n"
         "%s";
 
 typedef struct KeyValue {
@@ -204,15 +206,26 @@ typedef struct Response {
     char *mimetype;
 } Response;
 
-Response *response_html_new(uint32_t status, const char *body, size_t body_size) {
+Response *response_html_new(
+        uint32_t status,
+        const char *body,
+        size_t body_size) {
+
     Response *resp = mem_alloc(sizeof(Response));
-    resp->content_alloc_size = strlen(http_response_fmt) + body_size + HEADER_EXTRA_SIZE;
+    resp->content_alloc_size = strlen(http_response_fmt) +
+                               body_size +
+                               HEADER_EXTRA_SIZE;
     resp->content = mem_alloc(resp->content_alloc_size);
     resp->body_size = body_size;
     resp->mimetype = MIMETYPE_HTML;
     resp->status = status;
     resp->reason = http_reason(status);
-    resp->size = sprintf(resp->content, http_response_fmt, status, http_reason(status), resp->mimetype, body_size,
+    resp->size = sprintf(resp->content,
+                         http_response_fmt,
+                         status,
+                         http_reason(status),
+                         resp->mimetype,
+                         body_size,
                          body);
     return resp;
 }
@@ -247,9 +260,12 @@ void request_to_lua_arg(lua_State *L, Request *r) {
 }
 
 Response *response_from_lua(lua_State *L) {
-    lua_Integer status = luaL_checkinteger(L, 1); // first returned value
+    // first returned value
+    lua_Integer status = luaL_checkinteger(L, 1);
     size_t body_sz;
-    const char *body = luaL_checklstring(L, 2, &body_sz); // second returned value
+
+    // second returned value
+    const char *body = luaL_checklstring(L, 2, &body_sz);
     return response_html_new(status, body, body_sz);
 }
 
@@ -299,9 +315,13 @@ void httpserver_free(HTTPServer *srv) {
 }
 
 int http_server_listen(HTTPServer *srv, int maxconnections) {
-    int err = bind(srv->socket_fd, (struct sockaddr *) &srv->server_addr, sizeof(srv->server_addr));
+    int err = bind(
+            srv->socket_fd,
+            (struct sockaddr *) &srv->server_addr,
+            sizeof(srv->server_addr));
     if (err == -1) {
-        LOG_ERR("it wasn't possible to bind port %d", ntohs(srv->server_addr.sin_port));
+        LOG_ERR("it wasn't possible to bind port %d",
+                ntohs(srv->server_addr.sin_port));
         exit(1);
     }
     return listen(srv->socket_fd, maxconnections);
@@ -311,7 +331,9 @@ Client *http_server_accept(HTTPServer *srv) {
     Client *c = mem_alloc(sizeof(Client));
 
     c->size = sizeof(struct sockaddr_in);
-    c->fd = accept(srv->socket_fd, (struct sockaddr *) &c->addr, (socklen_t *) &c->size);
+    c->fd = accept(srv->socket_fd,
+                   (struct sockaddr *) &c->addr,
+                   (socklen_t *) &c->size);
     if (c->fd == -1) {
         panic("accept");
     }
